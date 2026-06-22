@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OpenHR - HRIS with Face Recognition</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18.3.1",
+      "react/jsx-runtime": "https://esm.sh/react@18.3.1/jsx-runtime",
+      "react-dom": "https://esm.sh/react-dom@18.3.1",
+      "react-dom/client": "https://esm.sh/react-dom@18.3.1/client",
+      "lucide-react": "https://esm.sh/lucide-react@0.400.0?external=react,react-dom",
+      "framer-motion": "https://esm.sh/framer-motion@11?external=react,react-dom",
+      "clsx": "https://esm.sh/clsx@2.1.1",
+      "tailwind-merge": "https://esm.sh/tailwind-merge@2.3.0"
+    }
+  }
+  </script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #F8FAFC; }
+    .video-container { position: relative; width: 100%; max-width: 480px; aspect-ratio: 4/3; background: #000; border-radius: 12px; overflow: hidden; margin: 0 auto; }
+    video { width: 100%; height: 100%; object-cover: cover; }
+    .skeleton {
+      background: linear-gradient(90deg, #F1F5F9 25%, #E2E8F0 50%, #F1F5F9 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s ease-in-out infinite;
+    }
+    @keyframes shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel" data-type="module" data-presets="react">
+    import React, { useState, useEffect } from 'react';
+    import { createRoot } from 'react-dom/client';
+    import { 
+      Users, Clock, DollarSign, LayoutDashboard, UserPlus, 
+      Camera, Settings, LogOut, ChevronRight, User, 
+      CheckCircle2, AlertCircle, Menu, Bell, HelpCircle, 
+      Search, MoreHorizontal, ChevronLeft, ChevronsUpDown
+    } from 'lucide-react';
+    import { clsx } from 'clsx';
+    import { twMerge } from 'tailwind-merge';
+
+    function cn(...inputs) {
+      return twMerge(clsx(inputs));
+    }
+
+    // --- Components ---
+
+    const SidebarItem = ({ icon: Icon, label, active, onClick }) => (
+      <button
+        onClick={onClick}
+        className={cn(
+          'flex items-center gap-2 px-2 h-8 w-full rounded-md text-sm font-medium transition-colors',
+          active 
+            ? 'bg-indigo-50 text-indigo-700' 
+            : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+        )}
+      >
+        <Icon className="w-4 h-4" />
+        {label}
+      </button>
+    );
+
+    const Card = ({ children, title, subtitle, action }) => (
+      <div className="bg-white border border-slate-200 rounded-lg overflow-hidden shadow-sm">
+        {(title || action) && (
+          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div>
+              {title && <h3 className="text-base font-semibold text-slate-900">{title}</h3>}
+              {subtitle && <p className="text-xs text-slate-500">{subtitle}</p>}
+            </div>
+            {action}
+          </div>
+        )}
+        <div className="p-5">{children}</div>
+      </div>
+    );
+
+    const Badge = ({ children, variant = 'neutral' }) => {
+      const variants = {
+        neutral: 'bg-slate-100 text-slate-700',
+        success: 'bg-green-50 text-green-700',
+        warning: 'bg-yellow-50 text-yellow-700',
+        error: 'bg-red-50 text-red-700',
+        brand: 'bg-indigo-50 text-indigo-700',
+      };
+      return (
+        <span className={cn('px-2 py-0.5 rounded text-[11px] font-medium', variants[variant])}>
+          {children}
+        </span>
+      );
+    };
+
+    // --- Views ---
+
+    const Dashboard = ({ employees, attendance }) => {
+      // Calculate active employees (last action was 'in' and no later 'out')
+      const activeIds = new Set();
+      const sorted = [...attendance].sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+      sorted.forEach(log => {
+        if (log.type === 'in') activeIds.add(log.employee_id);
+        else activeIds.delete(log.employee_id);
+      });
+
+      return (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-indigo-50 rounded-full text-indigo-600">
+                  <Users className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Total Staf</p>
+                  <h2 className="text-2xl font-bold">{employees.length}</h2>
+                </div>
+              </div>
+            </Card>
+            <Card>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-green-50 rounded-full text-green-600">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Aktif Saat Ini</p>
+                  <h2 className="text-2xl font-bold">{activeIds.size}</h2>
+                </div>
+              </div>
+            </Card>
+            <Card>
+              <div className="flex items-center gap-4">
+                <div className="p-3 bg-amber-50 rounded-full text-amber-600">
+                  <DollarSign className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Estimasi Payroll</p>
+                  <h2 className="text-2xl font-bold">Rp 125.4jt</h2>
+                </div>
+              </div>
+            </Card>
+          </div>
+
+          <Card title="Kehadiran Terkini" subtitle="Log masuk dan keluar karyawan terbaru">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-slate-500 text-left border-b border-slate-100">
+                    <th className="pb-3 font-medium">Karyawan</th>
+                    <th className="pb-3 font-medium">Tipe</th>
+                    <th className="pb-3 font-medium">Waktu</th>
+                    <th className="pb-3 font-medium">Metode</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-50">
+                  {attendance.slice(0, 8).map((log, i) => (
+                    <tr key={i} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-3 font-medium">{log.employee_name}</td>
+                      <td className="py-3">
+                        <Badge variant={log.type === 'in' ? 'success' : 'neutral'}>
+                          {log.type === 'in' ? 'Clock In' : 'Clock Out'}
+                        </Badge>
+                      </td>
+                      <td className="py-3 text-slate-500">{new Date(log.timestamp).toLocaleString('id-ID')}</td>
+                      <td className="py-3">
+                        <div className="flex items-center gap-1.5 text-slate-500 capitalize">
+                          {log.method === 'face' ? <Camera className="w-3.5 h-3.5" /> : <User className="w-3.5 h-3.5" />}
+                          {log.method}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {attendance.length === 0 && (
+                    <tr>
+                      <td colSpan="4" className="py-8 text-center text-slate-400 italic">Belum ada data kehadiran hari ini.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+        </div>
+      );
+    };
+
+    const AttendanceControl = ({ employees, onRecord }) => {
+      const [selectedEmp, setSelectedEmp] = useState('');
+      const [method, setMethod] = useState('face'); 
+      const [status, setStatus] = useState('idle'); 
+      const videoRef = React.useRef(null);
+
+      const handleFaceAuth = async (type) => {
+        if (!selectedEmp) return alert('Pilih karyawan terlebih dahulu');
+        setStatus('scanning');
+        
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+          videoRef.current.srcObject = stream;
+          await new Promise(resolve => videoRef.current.onloadedmetadata = resolve);
+          
+          // In a prototype, we simulate face recognition success after 2.5s
+          setTimeout(async () => {
+            const success = Math.random() > 0.1;
+            if (success) {
+              await onRecord(selectedEmp, type, 'face');
+              setStatus('success');
+              setTimeout(() => setStatus('idle'), 3000);
+            } else {
+              setStatus('error');
+              setTimeout(() => setStatus('idle'), 3000);
+            }
+            stream.getTracks().forEach(track => track.stop());
+          }, 2500);
+
+        } catch (err) {
+          console.error(err);
+          setStatus('error');
+        }
+      };
+
+      const handlePinAuth = async (type) => {
+        if (!selectedEmp) return alert('Pilih karyawan terlebih dahulu');
+        const pin = prompt('Masukkan PIN Verifikasi Anda:');
+        if (pin) {
+          await onRecord(selectedEmp, type, 'pin');
+          setStatus('success');
+          setTimeout(() => setStatus('idle'), 2000);
+        }
+      };
+
+      return (
+        <div className="max-w-xl mx-auto space-y-6">
+          <Card title="Attendance Terminal" subtitle="Verifikasi wajah atau PIN untuk Clock In/Out">
+            <div className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">Pilih Nama Karyawan</label>
+                <select 
+                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  value={selectedEmp}
+                  onChange={(e) => setSelectedEmp(e.target.value)}
+                >
+                  <option value="">-- Cari Nama Anda --</option>
+                  {employees.map(e => (
+                    <option key={e.id} value={e.id}>{e.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button 
+                  onClick={() => setMethod('face')}
+                  className={cn(
+                    "flex flex-col items-center gap-2 p-4 border rounded-xl transition-all",
+                    method === 'face' ? "border-indigo-600 bg-indigo-50" : "border-slate-200 hover:border-slate-300"
+                  )}
+                >
+                  <Camera className={cn("w-6 h-6", method === 'face' ? "text-indigo-600" : "text-slate-400")} />
+                  <span className="text-xs font-semibold">Face Recognition</span>
+                </button>
+                <button 
+                  onClick={() => setMethod('pin')}
+                  className={cn(
+                    "flex flex-col items-center gap-2 p-4 border rounded-xl transition-all",
+                    method === 'pin' ? "border-indigo-600 bg-indigo-50" : "border-slate-200 hover:border-slate-300"
+                  )}
+                >
+                  <Settings className={cn("w-6 h-6", method === 'pin' ? "text-indigo-600" : "text-slate-400")} />
+                  <span className="text-xs font-semibold">PIN Verification</span>
+                </button>
+              </div>
+
+              {method === 'face' && status === 'scanning' && (
+                <div className="video-container">
+                  <video ref={videoRef} autoPlay muted playsInline />
+                  <div className="absolute inset-0 border-[6px] border-indigo-500/50 animate-pulse rounded-xl"></div>
+                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/60 text-white px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest backdrop-blur-md">
+                    Scanning Identity...
+                  </div>
+                </div>
+              )}
+
+              {status === 'success' && (
+                <div className="bg-green-50 border border-green-100 p-4 rounded-xl flex items-center gap-3 text-green-700 animate-in fade-in zoom-in duration-300">
+                  <CheckCircle2 className="w-5 h-5 shrink-0" />
+                  <span className="text-sm font-semibold">Berhasil! Kehadiran Anda telah dicatat.</span>
+                </div>
+              )}
+
+              {status === 'error' && (
+                <div className="bg-red-50 border border-red-100 p-4 rounded-xl flex items-center gap-3 text-red-700">
+                  <AlertCircle className="w-5 h-5 shrink-0" />
+                  <span className="text-sm font-semibold">Wajah tidak dikenali. Silakan coba lagi.</span>
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button 
+                  onClick={() => method === 'face' ? handleFaceAuth('in') : handlePinAuth('in')}
+                  disabled={status === 'scanning'}
+                  className="flex-1 bg-indigo-600 text-white py-3.5 rounded-xl font-bold text-sm shadow-md shadow-indigo-200 hover:bg-indigo-700 active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  CLOCK IN
+                </button>
+                <button 
+                  onClick={() => method === 'face' ? handleFaceAuth('out') : handlePinAuth('out')}
+                  disabled={status === 'scanning'}
+                  className="flex-1 bg-slate-900 text-white py-3.5 rounded-xl font-bold text-sm shadow-md shadow-slate-200 hover:bg-slate-800 active:scale-[0.98] transition-all disabled:opacity-50"
+                >
+                  CLOCK OUT
+                </button>
+              </div>
+            </div>
+          </Card>
+        </div>
+      );
+    };
+
+    const PayrollView = () => {
+      const [data, setData] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        fetch('./api/payroll/calculate')
+          .then(res => res.json())
+          .then(res => {
+            setData(res);
+            setLoading(false);
+          });
+      }, []);
+
+      return (
+        <Card title="Payroll Integrasi" subtitle="Penghitungan gaji otomatis berdasarkan jam kerja riil">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-slate-500 text-left border-b border-slate-100">
+                  <th className="pb-4 font-medium">Staf</th>
+                  <th className="pb-4 font-medium">Total Jam</th>
+                  <th className="pb-4 font-medium">Gaji / Jam</th>
+                  <th className="pb-4 font-medium">Gross Pay</th>
+                  <th className="pb-4 text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-50">
+                {data.map((row, i) => (
+                  <tr key={i} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-4 font-medium">{row.employee_name}</td>
+                    <td className="py-4 font-mono text-xs">{row.total_hours} jam</td>
+                    <td className="py-4 text-slate-500">Rp {Number(row.hourly_rate).toLocaleString('id-ID')}</td>
+                    <td className="py-4 font-bold text-indigo-700">Rp {Number(row.gross_pay).toLocaleString('id-ID')}</td>
+                    <td className="py-4 text-right">
+                      <button className="bg-indigo-50 text-indigo-700 px-3 py-1 rounded-md text-[11px] font-bold hover:bg-indigo-100 transition-colors">PROSES BAYAR</button>
+                    </td>
+                  </tr>
+                ))}
+                {loading && (
+                  [1,2,3].map(i => (
+                    <tr key={i}>
+                      <td colSpan="5" className="py-4"><div className="h-4 skeleton w-full rounded"></div></td>
+                    </tr>
+                  ))
+                )}
+                {data.length === 0 && !loading && (
+                  <tr>
+                    <td colSpan="5" className="py-12 text-center text-slate-400 italic">Belum ada data perhitungan payroll.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      );
+    };
+
+    const EmployeeRegister = ({ onAdded }) => {
+      const [formData, setFormData] = useState({ name: '', email: '', hourly_rate: '' });
+      
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        const res = await fetch('./api/employees', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData)
+        });
+        if (res.ok) {
+          alert('Data karyawan berhasil disimpan. Lanjutkan ke registrasi wajah?');
+          setFormData({ name: '', email: '', hourly_rate: '' });
+          onAdded();
+        }
+      };
+
+      return (
+        <div className="max-w-md mx-auto">
+          <Card title="Pendaftaran Staf" subtitle="Daftarkan karyawan baru dan atur tarif per jam">
+            <form className="space-y-4" onSubmit={handleSubmit}>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nama Lengkap</label>
+                <input 
+                  required
+                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  value={formData.name}
+                  onChange={e => setFormData({...formData, name: e.target.value})}
+                  placeholder="Contoh: Jane Doe"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Email Kantor</label>
+                <input 
+                  type="email"
+                  required
+                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  value={formData.email}
+                  onChange={e => setFormData({...formData, email: e.target.value})}
+                  placeholder="jane@perusahaan.com"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Tarif Gaji per Jam (IDR)</label>
+                <input 
+                  type="number"
+                  required
+                  className="w-full border border-slate-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                  value={formData.hourly_rate}
+                  onChange={e => setFormData({...formData, hourly_rate: e.target.value})}
+                  placeholder="50000"
+                />
+              </div>
+              <div className="pt-2">
+                <button className="w-full bg-indigo-600 text-white py-3 rounded-lg font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 active:scale-[0.98] transition-all">
+                  DAFTARKAN SEKARANG
+                </button>
+              </div>
+            </form>
+          </Card>
+        </div>
+      );
+    };
+
+    // --- Main App ---
+
+    function App() {
+      const [view, setView] = useState('dashboard');
+      const [employees, setEmployees] = useState([]);
+      const [attendance, setAttendance] = useState([]);
+      const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+      const fetchData = async () => {
+        try {
+          const [empRes, attRes] = await Promise.all([
+            fetch('./api/employees'),
+            fetch('./api/attendance')
+          ]);
+          setEmployees(await empRes.json());
+          setAttendance(await attRes.json());
+        } catch (err) {
+          console.error('Fetch error:', err);
+        }
+      };
+
+      useEffect(() => {
+        fetchData();
+      }, []);
+
+      const handleRecord = async (empId, type, method) => {
+        await fetch('./api/attendance', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ employee_id: empId, type, method })
+        });
+        fetchData();
+      };
+
+      return (
+        <div className="flex h-screen overflow-hidden">
+          {/* Sidebar */}
+          <aside className={cn(
+            "fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-300 lg:static lg:translate-x-0",
+            isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          )}>
+            <div className="p-6 flex items-center gap-3 border-b border-slate-100">
+              <div className="bg-indigo-600 p-1.5 rounded-lg text-white">
+                <Clock className="w-6 h-6" />
+              </div>
+              <h1 className="text-xl font-bold tracking-tight text-slate-900">OpenHR</h1>
+            </div>
+            
+            <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 mb-3 mt-2">Workspace</div>
+              <SidebarItem icon={LayoutDashboard} label="Dashboard" active={view === 'dashboard'} onClick={() => {setView('dashboard'); setIsMobileMenuOpen(false)}} />
+              <SidebarItem icon={Clock} label="Attendance" active={view === 'attendance'} onClick={() => {setView('attendance'); setIsMobileMenuOpen(false)}} />
+              <SidebarItem icon={DollarSign} label="Payroll" active={view === 'payroll'} onClick={() => {setView('payroll'); setIsMobileMenuOpen(false)}} />
+              <SidebarItem icon={Users} label="Employees" active={view === 'employees'} onClick={() => {setView('employees'); setIsMobileMenuOpen(false)}} />
+              
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-2 mt-8 mb-3">Management</div>
+              <SidebarItem icon={UserPlus} label="Daftarkan Staf" active={view === 'register'} onClick={() => {setView('register'); setIsMobileMenuOpen(false)}} />
+              <SidebarItem icon={Camera} label="Face Reg" active={view === 'face-reg'} onClick={() => {setView('face-reg'); setIsMobileMenuOpen(false)}} />
+              <SidebarItem icon={Settings} label="Pengaturan" active={view === 'settings'} onClick={() => {setView('settings'); setIsMobileMenuOpen(false)}} />
+            </nav>
+
+            <div className="p-4 border-t border-slate-100">
+              <div className="flex items-center gap-3 px-2 py-3 rounded-xl bg-slate-50 border border-slate-100">
+                <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-xs">AD</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-bold text-slate-900 truncate">Administrator</p>
+                  <p className="text-[10px] text-slate-500 truncate">admin@hris.local</p>
+                </div>
+                <LogOut className="w-4 h-4 text-slate-400 cursor-pointer hover:text-red-500 transition-colors" />
+              </div>
+            </div>
+          </aside>
+
+          {/* Main Content */}
+          <div className="flex-1 flex flex-col min-w-0 bg-slate-50 overflow-hidden">
+            <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 lg:px-8 shrink-0">
+              <div className="flex items-center gap-4">
+                <button 
+                  className="lg:hidden p-2 text-slate-500 hover:bg-slate-100 rounded-lg"
+                  onClick={() => setIsMobileMenuOpen(true)}
+                >
+                  <Menu className="w-5 h-5" />
+                </button>
+                <div className="hidden sm:flex items-center gap-2 text-sm text-slate-500">
+                  <span className="hover:text-indigo-600 cursor-pointer transition-colors">Home</span>
+                  <ChevronRight className="w-3 h-3" />
+                  <span className="text-slate-900 font-semibold capitalize">{view}</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 lg:gap-4">
+                <div className="relative hidden md:block">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input 
+                    type="text" 
+                    placeholder="Search anything..." 
+                    className="pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-full text-sm w-64 focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
+                  />
+                </div>
+                <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors relative">
+                  <Bell className="w-5 h-5" />
+                  <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+                </button>
+                <button className="p-2 text-slate-400 hover:bg-slate-100 rounded-full transition-colors">
+                  <HelpCircle className="w-5 h-5" />
+                </button>
+              </div>
+            </header>
+
+            <main className="flex-1 overflow-y-auto p-4 lg:p-8">
+              {view === 'dashboard' && <Dashboard employees={employees} attendance={attendance} />}
+              {view === 'attendance' && <AttendanceControl employees={employees} onRecord={handleRecord} />}
+              {view === 'payroll' && <PayrollView />}
+              {view === 'employees' && (
+                 <Card title="Daftar Seluruh Staf" subtitle="Informasi kontrak dan jabatan karyawan">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="text-slate-500 text-left border-b border-slate-100">
+                            <th className="pb-4">Nama Lengkap</th>
+                            <th className="pb-4">Alamat Email</th>
+                            <th className="pb-4">Rate / Jam</th>
+                            <th className="pb-4 text-right">Tanggal Gabung</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-50">
+                          {employees.map(e => (
+                            <tr key={e.id} className="hover:bg-slate-50 transition-colors">
+                              <td className="py-4 font-semibold text-slate-900">{e.name}</td>
+                              <td className="py-4 text-slate-600">{e.email}</td>
+                              <td className="py-4 font-mono text-xs">Rp {Number(e.hourly_rate).toLocaleString('id-ID')}</td>
+                              <td className="py-4 text-slate-500 text-right">{new Date(e.join_date).toLocaleDateString('id-ID')}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                 </Card>
+              )}
+              {view === 'register' && <EmployeeRegister onAdded={fetchData} />}
+              {view === 'face-reg' && (
+                <div className="max-w-xl mx-auto">
+                   <Card title="Face Registration" subtitle="Daftarkan biometrik wajah karyawan untuk verifikasi Clock In">
+                      <div className="space-y-6">
+                        <div className="video-container">
+                           <div className="absolute inset-0 flex items-center justify-center text-slate-500 bg-slate-900">
+                              <Camera className="w-12 h-12 opacity-20" />
+                           </div>
+                        </div>
+                        <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl text-amber-800 text-sm">
+                           <p className="font-bold mb-1 flex items-center gap-2"><AlertCircle className="w-4 h-4" /> Perhatian</p>
+                           <p>Pastikan pencahayaan cukup dan wajah terlihat jelas tanpa aksesoris yang menutupi (masker, kacamata hitam).</p>
+                        </div>
+                        <button className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-100 hover:bg-indigo-700 transition-all">
+                          MULAI REGISTRASI WAJAH
+                        </button>
+                      </div>
+                   </Card>
+                </div>
+              )}
+              {view === 'settings' && (
+                <div className="max-w-2xl mx-auto space-y-4">
+                  <Card title="Konfigurasi Sistem">
+                    <div className="space-y-6">
+                       <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                          <div>
+                             <p className="text-sm font-bold">Face Recognition</p>
+                             <p className="text-xs text-slate-500">Wajibkan scan wajah saat Clock In</p>
+                          </div>
+                          <div className="w-12 h-6 bg-indigo-600 rounded-full relative cursor-pointer">
+                             <div className="absolute right-1 top-1 w-4 h-4 bg-white rounded-full"></div>
+                          </div>
+                       </div>
+                       <div className="flex items-center justify-between py-2 border-b border-slate-100">
+                          <div>
+                             <p className="text-sm font-bold">Geofencing Attendance</p>
+                             <p className="text-xs text-slate-500">Hanya izinkan absen di radius kantor</p>
+                          </div>
+                          <div className="w-12 h-6 bg-slate-200 rounded-full relative cursor-pointer">
+                             <div className="absolute left-1 top-1 w-4 h-4 bg-white rounded-full"></div>
+                          </div>
+                       </div>
+                    </div>
+                  </Card>
+                </div>
+              )}
+            </main>
+          </div>
+        </div>
+      );
+    }
+
+    const container = document.getElementById('root');
+    const root = createRoot(container);
+    root.render(<App />);
+  </script>
+</body>
+</html>
